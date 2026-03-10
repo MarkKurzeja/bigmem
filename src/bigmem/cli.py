@@ -5,8 +5,9 @@ import json
 import os
 import sys
 
+from bigmem import __version__
 from bigmem.db import get_connection, init_db
-from bigmem.store import put, get, list_facts, search, delete, session_end, stats
+from bigmem.store import put, get, list_facts, search, delete, session_end, stats, cleanup, append, exists
 
 
 def _default_db() -> str:
@@ -70,10 +71,11 @@ def cmd_get(args, conn) -> int:
         else:
             results.append(None)
     if args.raw:
-        for fact, key in zip(results, keys):
-            if fact:
-                sys.stdout.write(json.loads(fact["value"]) if isinstance(fact["value"], str) else json.dumps(fact["value"]))
-            sys.stdout.write("\n")
+        for result in results:
+            if result:
+                sys.stdout.write(json.dumps(result["value"]) + "\n")
+            else:
+                sys.stdout.write("\n")
     else:
         _output(results)
     return 0 if any_found else 1
@@ -87,6 +89,8 @@ def cmd_list(args, conn) -> int:
         session=args.session or "",
         ephemeral_only=args.ephemeral,
         persistent_only=args.persistent,
+        since=args.since or "",
+        before=args.before or "",
         limit=args.limit,
         offset=args.offset,
     )
@@ -130,6 +134,93 @@ def cmd_stats(args, conn) -> int:
     return 0
 
 
+def cmd_exists(args, conn) -> int:
+    found = exists(conn, args.key, namespace=args.namespace)
+    _output({"exists": found, "key": args.key})
+    return 0 if found else 1
+
+
+def cmd_append(args, conn) -> int:
+    if args.stdin:
+        value = sys.stdin.read().rstrip("\n")
+    else:
+        if args.value is None:
+            print("error: value is required (or use --stdin)", file=sys.stderr)
+            return 2
+        value = args.value
+    fact = append(
+        conn,
+        args.key,
+        value,
+        namespace=args.namespace,
+        tags=args.tags or "",
+        source=args.source or "",
+        session=args.session or "",
+    )
+    if not args.quiet:
+        _output(fact.to_dict())
+    return 0
+
+
+def cmd_cleanup(args, conn) -> int:
+    if not args.before and not args.tags:
+        print("error: --before or --tags required", file=sys.stderr)
+        return 2
+    count = cleanup(
+        conn,
+        namespace=args.namespace,
+        before=args.before or "",
+        tags=args.tags or "",
+    )
+    _output({"deleted": count})
+    return 0
+
+
+def cmd_version(args, conn) -> int:
+    _output({"version": __version__})
+    return 0
+
+
+def cmd_export(args, conn) -> int:
+    facts = list_facts(
+        conn,
+        namespace=args.namespace,
+        tags=args.tags or "",
+    )
+    if args.file:
+        with open(args.file, "w") as f:
+            for fact in facts:
+                f.write(json.dumps(fact.to_dict()) + "\n")
+        _output({"exported": len(facts), "file": args.file})
+    else:
+        for fact in facts:
+            sys.stdout.write(json.dumps(fact.to_dict()) + "\n")
+    return 0
+
+
+def cmd_import(args, conn) -> int:
+    count = 0
+    with open(args.file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            put(
+                conn,
+                data["key"],
+                json.dumps(data["value"]),
+                namespace=data.get("namespace", args.namespace),
+                tags=",".join(data["tags"]) if isinstance(data.get("tags"), list) else data.get("tags", ""),
+                source=data.get("source", ""),
+                session=data.get("session", ""),
+                ephemeral=data.get("ephemeral", False),
+            )
+            count += 1
+    _output({"imported": count, "file": args.file})
+    return 0
+
+
 def cmd_batch(args, conn) -> int:
     for line in sys.stdin:
         line = line.strip()
@@ -167,6 +258,29 @@ def cmd_batch(args, conn) -> int:
             elif op == "delete":
                 deleted = delete(conn, key, namespace=ns)
                 print(json.dumps({"ok": deleted, "key": key}))
+            elif op == "exists":
+                found = exists(conn, key, namespace=ns)
+                print(json.dumps({"ok": True, "result": {"exists": found, "key": key}}))
+            elif op == "append":
+                fact = append(
+                    conn,
+                    key,
+                    req.get("value", "null"),
+                    namespace=ns,
+                    tags=req.get("tags", ""),
+                    source=req.get("source", ""),
+                    session=req.get("session", ""),
+                )
+                print(json.dumps({"ok": True, "result": fact.to_dict()}))
+            elif op == "search":
+                results = search(
+                    conn,
+                    req.get("query", ""),
+                    namespace=ns,
+                    tags=req.get("tags", ""),
+                    limit=req.get("limit", 100),
+                )
+                print(json.dumps({"ok": True, "result": [f.to_dict() for f in results]}))
             else:
                 print(json.dumps({"ok": False, "error": f"unknown op: {op}"}))
         except Exception as e:
@@ -208,6 +322,8 @@ def main():
     p_list.add_argument("--limit", type=int, default=100)
     p_list.add_argument("--offset", type=int, default=0)
     p_list.add_argument("--keys-only", action="store_true")
+    p_list.add_argument("--since", default="", help="Only facts created at or after this ISO timestamp")
+    p_list.add_argument("--before", default="", help="Only facts created before this ISO timestamp")
 
     # search
     p_search = sub.add_parser("search", help="Full-text search")
@@ -226,6 +342,37 @@ def main():
 
     # stats
     sub.add_parser("stats", help="Show database statistics")
+
+    # exists
+    p_exists = sub.add_parser("exists", help="Check if a key exists (exit 0=yes, 1=no)")
+    p_exists.add_argument("key")
+
+    # append
+    p_append = sub.add_parser("append", help="Append a value to a JSON array")
+    p_append.add_argument("key")
+    p_append.add_argument("value", nargs="?", default=None)
+    p_append.add_argument("--tags", default="")
+    p_append.add_argument("--source", default="")
+    p_append.add_argument("--session", default="")
+    p_append.add_argument("--stdin", action="store_true")
+    p_append.add_argument("-q", "--quiet", action="store_true")
+
+    # cleanup
+    p_cleanup = sub.add_parser("cleanup", help="Delete old or tagged facts (preserves pinned)")
+    p_cleanup.add_argument("--before", default="", help="Delete facts created before this ISO timestamp")
+    p_cleanup.add_argument("--tags", default="", help="Delete facts with this tag")
+
+    # export
+    p_export = sub.add_parser("export", help="Export facts as NDJSON")
+    p_export.add_argument("--file", default="", help="Output file (default: stdout)")
+    p_export.add_argument("--tags", default="", help="Filter by tag")
+
+    # import
+    p_import = sub.add_parser("import", help="Import facts from NDJSON file")
+    p_import.add_argument("--file", required=True, help="Input NDJSON file")
+
+    # version
+    sub.add_parser("version", help="Show version")
 
     # batch
     sub.add_parser("batch", help="Process NDJSON batch operations from stdin")
@@ -250,6 +397,12 @@ def main():
         "delete": cmd_delete,
         "session-end": cmd_session_end,
         "stats": cmd_stats,
+        "exists": cmd_exists,
+        "append": cmd_append,
+        "cleanup": cmd_cleanup,
+        "export": cmd_export,
+        "import": cmd_import,
+        "version": cmd_version,
         "batch": cmd_batch,
     }
 

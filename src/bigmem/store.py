@@ -74,6 +74,8 @@ def list_facts(
     session: str = "",
     ephemeral_only: bool = False,
     persistent_only: bool = False,
+    since: str = "",
+    before: str = "",
     limit: int = 100,
     offset: int = 0,
 ) -> list[Fact]:
@@ -90,6 +92,12 @@ def list_facts(
         clauses.append("ephemeral = 1")
     if persistent_only:
         clauses.append("ephemeral = 0")
+    if since:
+        clauses.append("created_at >= ?")
+        params.append(since)
+    if before:
+        clauses.append("created_at < ?")
+        params.append(before)
 
     where = " AND ".join(clauses)
     rows = conn.execute(
@@ -155,8 +163,96 @@ def stats(conn: sqlite3.Connection) -> dict:
     total = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
     namespaces = conn.execute("SELECT COUNT(DISTINCT namespace) FROM facts").fetchone()[0]
     ephemeral = conn.execute("SELECT COUNT(*) FROM facts WHERE ephemeral = 1").fetchone()[0]
+    oldest = conn.execute("SELECT MIN(created_at) FROM facts").fetchone()[0]
+    newest = conn.execute("SELECT MAX(created_at) FROM facts").fetchone()[0]
+
+    # Tag distribution
+    tag_counts: dict[str, int] = {}
+    rows = conn.execute("SELECT tags FROM facts WHERE tags != ''").fetchall()
+    for (tags_str,) in rows:
+        for tag in tags_str.split(","):
+            tag = tag.strip()
+            if tag:
+                tag_counts[tag] = tag_counts.get(tag, 0) + 1
+
     return {
         "total_facts": total,
         "namespaces": namespaces,
         "ephemeral_facts": ephemeral,
+        "oldest": oldest,
+        "newest": newest,
+        "tags": tag_counts,
     }
+
+
+def exists(
+    conn: sqlite3.Connection,
+    key: str,
+    *,
+    namespace: str = "default",
+) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM facts WHERE key = ? AND namespace = ? LIMIT 1",
+        (key, namespace),
+    ).fetchone()
+    return row is not None
+
+
+def append(
+    conn: sqlite3.Connection,
+    key: str,
+    value: str,
+    *,
+    namespace: str = "default",
+    tags: str = "",
+    source: str = "",
+    session: str = "",
+) -> Fact:
+    """Append a value to a JSON array. Creates the array if key doesn't exist."""
+    value = _normalize_value(value)
+    parsed_new = json.loads(value)
+
+    existing = get(conn, key, namespace=namespace)
+    if existing is None:
+        new_list = [parsed_new]
+    else:
+        existing_val = json.loads(existing.value)
+        if isinstance(existing_val, list):
+            new_list = existing_val + [parsed_new]
+        else:
+            new_list = [existing_val, parsed_new]
+
+    return put(
+        conn, key, json.dumps(new_list),
+        namespace=namespace,
+        tags=tags or (existing.tags if existing else ""),
+        source=source or (existing.source if existing else ""),
+        session=session or (existing.session if existing else ""),
+    )
+
+
+def cleanup(
+    conn: sqlite3.Connection,
+    *,
+    namespace: str = "default",
+    before: str = "",
+    tags: str = "",
+) -> int:
+    """Delete facts matching criteria. Pinned facts (tag 'pin') are always preserved."""
+    clauses = ["tags NOT LIKE '%pin%'"]
+    params: list = []
+
+    if before:
+        clauses.append("created_at < ?")
+        params.append(before)
+    if tags:
+        clauses.append("tags LIKE ?")
+        params.append(f"%{tags}%")
+
+    if not before and not tags:
+        return 0  # safety: require at least one filter
+
+    where = " AND ".join(clauses)
+    cursor = conn.execute(f"DELETE FROM facts WHERE {where}", params)
+    conn.commit()
+    return cursor.rowcount

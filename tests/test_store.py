@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from bigmem.store import put, get, list_facts, search, delete, session_end, stats
+from bigmem.store import put, get, list_facts, search, delete, session_end, stats, cleanup, append, exists
 
 
 # --- put / get basics ---
@@ -152,6 +152,48 @@ def test_list_by_namespace(conn):
     assert len(facts) == 1
 
 
+# --- time filters ---
+
+def test_list_since(conn):
+    put(conn, "old", '"v"')
+    # Manually backdate one fact
+    conn.execute(
+        "UPDATE facts SET created_at = '2020-01-01T00:00:00.000Z', "
+        "updated_at = '2020-01-01T00:00:00.000Z' WHERE key = 'old'"
+    )
+    conn.commit()
+    put(conn, "new", '"v"')
+    facts = list_facts(conn, since="2025-01-01T00:00:00Z")
+    assert len(facts) == 1
+    assert facts[0].key == "new"
+
+
+def test_list_before(conn):
+    put(conn, "old", '"v"')
+    conn.execute(
+        "UPDATE facts SET created_at = '2020-01-01T00:00:00.000Z', "
+        "updated_at = '2020-01-01T00:00:00.000Z' WHERE key = 'old'"
+    )
+    conn.commit()
+    put(conn, "new", '"v"')
+    facts = list_facts(conn, before="2021-01-01T00:00:00Z")
+    assert len(facts) == 1
+    assert facts[0].key == "old"
+
+
+def test_list_since_and_before(conn):
+    for i, year in enumerate([2019, 2021, 2024]):
+        put(conn, f"k{i}", f'"{i}"')
+        conn.execute(
+            f"UPDATE facts SET created_at = '{year}-06-01T00:00:00.000Z', "
+            f"updated_at = '{year}-06-01T00:00:00.000Z' WHERE key = 'k{i}'"
+        )
+    conn.commit()
+    facts = list_facts(conn, since="2020-01-01T00:00:00Z", before="2023-01-01T00:00:00Z")
+    assert len(facts) == 1
+    assert facts[0].key == "k1"
+
+
 # --- search (FTS) ---
 
 def test_search_by_value(conn):
@@ -250,3 +292,107 @@ def test_stats_with_data(conn):
     assert s["total_facts"] == 3
     assert s["namespaces"] == 2
     assert s["ephemeral_facts"] == 1
+
+
+def test_stats_includes_tag_counts(conn):
+    put(conn, "a", '"1"', tags="pin,decision")
+    put(conn, "b", '"2"', tags="pin")
+    put(conn, "c", '"3"', tags="debug")
+    s = stats(conn)
+    assert "tags" in s
+    assert s["tags"]["pin"] == 2
+    assert s["tags"]["decision"] == 1
+    assert s["tags"]["debug"] == 1
+
+
+def test_stats_includes_timestamps(conn):
+    put(conn, "a", '"1"')
+    s = stats(conn)
+    assert "oldest" in s
+    assert "newest" in s
+    assert s["oldest"] is not None
+    assert s["newest"] is not None
+
+
+# --- cleanup ---
+
+def test_cleanup_older_than(conn):
+    put(conn, "old", '"v"')
+    conn.execute(
+        "UPDATE facts SET created_at = '2020-01-01T00:00:00.000Z', "
+        "updated_at = '2020-01-01T00:00:00.000Z' WHERE key = 'old'"
+    )
+    conn.commit()
+    put(conn, "new", '"v"')
+    count = cleanup(conn, before="2021-01-01T00:00:00Z")
+    assert count == 1
+    assert get(conn, "old") is None
+    assert get(conn, "new") is not None
+
+
+def test_cleanup_skips_pinned(conn):
+    put(conn, "old_pinned", '"v"', tags="pin,context")
+    put(conn, "old_unpinned", '"v"', tags="context")
+    conn.execute(
+        "UPDATE facts SET created_at = '2020-01-01T00:00:00.000Z', "
+        "updated_at = '2020-01-01T00:00:00.000Z' WHERE key LIKE 'old%'"
+    )
+    conn.commit()
+    count = cleanup(conn, before="2021-01-01T00:00:00Z")
+    assert count == 1
+    assert get(conn, "old_pinned") is not None
+    assert get(conn, "old_unpinned") is None
+
+
+def test_cleanup_by_tag(conn):
+    put(conn, "a", '"1"', tags="debug")
+    put(conn, "b", '"2"', tags="decision")
+    count = cleanup(conn, tags="debug")
+    assert count == 1
+    assert get(conn, "a") is None
+    assert get(conn, "b") is not None
+
+
+# --- append ---
+
+def test_append_creates_list_if_key_missing(conn):
+    fact = append(conn, "findings", "found bug in auth.py")
+    assert json.loads(fact.value) == ["found bug in auth.py"]
+
+
+def test_append_adds_to_existing_list(conn):
+    append(conn, "findings", "item 1")
+    append(conn, "findings", "item 2")
+    fact = get(conn, "findings")
+    assert json.loads(fact.value) == ["item 1", "item 2"]
+
+
+def test_append_to_non_list_wraps_in_list(conn):
+    put(conn, "k", '"existing scalar"')
+    append(conn, "k", "new item")
+    fact = get(conn, "k")
+    assert json.loads(fact.value) == ["existing scalar", "new item"]
+
+
+# --- exists ---
+
+def test_exists_true(conn):
+    put(conn, "k", '"v"')
+    assert exists(conn, "k") is True
+
+
+def test_exists_false(conn):
+    assert exists(conn, "nonexistent") is False
+
+
+def test_exists_respects_namespace(conn):
+    put(conn, "k", '"v"', namespace="ns1")
+    assert exists(conn, "k", namespace="ns1") is True
+    assert exists(conn, "k", namespace="ns2") is False
+
+
+def test_append_preserves_json_values(conn):
+    append(conn, "k", '{"step": 1}')
+    append(conn, "k", '{"step": 2}')
+    fact = get(conn, "k")
+    assert json.loads(fact.value) == [{"step": 1}, {"step": 2}]
