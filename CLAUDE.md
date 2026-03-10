@@ -1,30 +1,23 @@
 # bigmem — SQLite-backed memory store for AI agents
 
-## Quick Reference
+## Skills
+
+Use these slash commands instead of calling bigmem directly — they run in forked context to avoid polluting the conversation:
+
+- `/remember <key> <value>` — store a fact silently
+- `/recall <key-or-query>` — retrieve facts or search
+- `/bigmem <command>` — full CLI access (batch, stats, cleanup)
+
+## Quick CLI Reference
 
 ```bash
-# Store a fact (auto-wraps plain strings as JSON)
-bigmem put <key> <value> [--tags t1,t2] [--source agent-id] [--session sid] [--ephemeral] [-q]
-
-# Retrieve facts (single or multi-key)
-bigmem get <key>              # full fact JSON
-bigmem get <key> --raw        # just the value, for piping
-bigmem get <k1> <k2> <k3>    # returns array, null for missing keys
-
-# Search and list
-bigmem search <query>         # FTS5 full-text search
-bigmem list [--tags t] [--keys-only] [--session s] [--ephemeral] [--persistent]
-
-# Delete
+bigmem put <key> <value> [--tags t1,t2] [--source agent-id] [-q]
+bigmem get <key> [key2...] [--raw]
+bigmem search <query> [--tags t]
+bigmem list [--tags t] [--keys-only] [--session s]
 bigmem delete <key>
-bigmem session-end <session-id>   # delete all ephemeral facts for a session
-
-# Batch (NDJSON on stdin, one result per line)
-echo '{"op":"put","key":"k","value":"v"}
-{"op":"get","key":"k"}
-{"op":"delete","key":"k"}' | bigmem batch
-
-# Stats
+bigmem session-end <session-id>
+echo '{"op":"put","key":"k","value":"v"}' | bigmem batch
 bigmem stats
 ```
 
@@ -33,46 +26,57 @@ bigmem stats
 - `--namespace NS` — isolate facts by namespace (default: `default`)
 - `--pretty` — pretty-print JSON (default: compact for token efficiency)
 
-## Agent patterns
+## Context management patterns
 
-**Store structured data:**
+**Pin critical facts** so they survive context compaction:
 ```bash
-bigmem put user_prefs '{"theme":"dark","lang":"en"}' --tags config
+bigmem put project_arch "monorepo, React frontend, FastAPI backend" --tags pin
 ```
+Pinned facts are automatically re-injected after compaction via SessionStart hook.
 
-**Quick silent writes (no output, saves tokens):**
+**Use `-q` on writes** to avoid adding confirmation noise to context:
 ```bash
 bigmem put status "running task 3" -q
 ```
 
-**Read-modify-write:**
+**Use `--raw` for piping** to avoid parsing overhead:
 ```bash
 VALUE=$(bigmem get config --raw)
-# ... modify VALUE ...
-bigmem put config "$VALUE" -q
 ```
 
-**Fetch multiple keys at once:**
+**Multi-key fetch** reduces subprocess calls:
 ```bash
 bigmem get user_name user_role user_prefs
 ```
 
-**Ephemeral session memory (auto-cleaned):**
+**Ephemeral session memory** for scratch data that auto-cleans:
 ```bash
-bigmem put scratch "temp data" --ephemeral --session $SESSION_ID
-# ... later ...
+bigmem put scratch "temp" --ephemeral --session $SESSION_ID
 bigmem session-end $SESSION_ID
 ```
 
-**Pipe content in:**
+**Batch operations** for bulk work (NDJSON on stdin):
 ```bash
-cat results.json | bigmem put analysis_results --stdin
+echo '{"op":"put","key":"a","value":"1"}
+{"op":"get","key":"a"}' | bigmem batch
 ```
 
+**Namespace isolation** for parallel agents or multi-project:
+```bash
+bigmem --namespace agent-1 put findings "..."
+bigmem --namespace agent-2 put findings "..."
+```
+
+## Tag conventions
+- `pin` — survives compaction (auto-re-injected)
+- `decision` — architectural/design decisions
+- `preference` — user preferences
+- `debug` — debugging findings
+- `context` — task/project context
+- `blocker` — known issues
+
 ## Exit codes
-- 0 = success
-- 1 = not found
-- 2 = usage error
+- 0 = success, 1 = not found, 2 = usage error
 
 ## Development
 ```bash
