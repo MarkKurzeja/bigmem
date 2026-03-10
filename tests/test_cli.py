@@ -208,6 +208,62 @@ class TestBatch:
         assert lines[1]["ok"] is True
 
 
+class TestQuiet:
+    def test_put_quiet(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        r = run_cli("put", "k", "v", "-q", db_path=db)
+        assert r.returncode == 0
+        assert r.stdout == ""
+        # fact was still stored
+        r = run_cli("get", "k", db_path=db)
+        assert r.returncode == 0
+        assert json.loads(r.stdout)["value"] == "v"
+
+
+class TestMultiGet:
+    def test_multi_key_get(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        run_cli("put", "a", "1", "-q", db_path=db)
+        run_cli("put", "b", "2", "-q", db_path=db)
+        r = run_cli("get", "a", "b", db_path=db)
+        assert r.returncode == 0
+        out = json.loads(r.stdout)
+        assert len(out) == 2
+        assert out[0]["key"] == "a"
+        assert out[1]["key"] == "b"
+
+    def test_multi_key_get_with_missing(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        run_cli("put", "a", "1", "-q", db_path=db)
+        r = run_cli("get", "a", "missing", db_path=db)
+        assert r.returncode == 0  # at least one found
+        out = json.loads(r.stdout)
+        assert out[0]["key"] == "a"
+        assert out[1] is None
+
+    def test_multi_key_all_missing(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        r = run_cli("get", "x", "y", db_path=db)
+        assert r.returncode == 1
+
+
+class TestCompactOutput:
+    def test_default_is_compact(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        run_cli("put", "k", "v", "-q", db_path=db)
+        r = run_cli("get", "k", db_path=db)
+        # compact output has no newlines inside the JSON
+        assert "\n" not in r.stdout.strip()
+
+    def test_pretty_flag(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        cmd = [sys.executable, "-m", "bigmem", "--db", db, "--pretty", "put", "k", "v"]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        assert r.returncode == 0
+        # pretty output has newlines inside the JSON
+        assert "\n" in r.stdout.strip()
+
+
 class TestNamespaceFlag:
     def test_namespace_isolation_via_cli(self, tmp_path):
         db = str(tmp_path / "test.db")

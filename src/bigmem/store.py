@@ -108,30 +108,23 @@ def search(
     limit: int = 100,
     offset: int = 0,
 ) -> list[Fact]:
+    cols = ', '.join('f.' + c for c in COLUMNS)
+    clauses = ["facts_fts MATCH ?", "f.namespace = ?"]
+    params: list = [query, namespace]
     if tags:
-        rows = conn.execute(
-            f"""
-            SELECT {', '.join('f.' + c for c in COLUMNS)}
-            FROM facts f
-            JOIN facts_fts fts ON f.rowid = fts.rowid
-            WHERE facts_fts MATCH ? AND f.namespace = ? AND f.tags LIKE ?
-            ORDER BY fts.rank
-            LIMIT ? OFFSET ?
-            """,
-            (query, namespace, f"%{tags}%", limit, offset),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            f"""
-            SELECT {', '.join('f.' + c for c in COLUMNS)}
-            FROM facts f
-            JOIN facts_fts fts ON f.rowid = fts.rowid
-            WHERE facts_fts MATCH ? AND f.namespace = ?
-            ORDER BY fts.rank
-            LIMIT ? OFFSET ?
-            """,
-            (query, namespace, limit, offset),
-        ).fetchall()
+        clauses.append("f.tags LIKE ?")
+        params.append(f"%{tags}%")
+    where = " AND ".join(clauses)
+    rows = conn.execute(
+        f"""
+        SELECT {cols} FROM facts f
+        JOIN facts_fts fts ON f.rowid = fts.rowid
+        WHERE {where}
+        ORDER BY fts.rank
+        LIMIT ? OFFSET ?
+        """,
+        params + [limit, offset],
+    ).fetchall()
     return [Fact.from_row(r, COLUMNS) for r in rows]
 
 

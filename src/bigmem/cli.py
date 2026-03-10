@@ -13,11 +13,15 @@ def _default_db() -> str:
     return os.path.join(os.path.expanduser("~"), ".bigmem.db")
 
 
+_pretty = False
+
+
 def _output(data) -> None:
     if isinstance(data, str):
         sys.stdout.write(data + "\n")
     else:
-        sys.stdout.write(json.dumps(data, indent=2) + "\n")
+        indent = 2 if _pretty else None
+        sys.stdout.write(json.dumps(data, indent=indent, separators=(",", ":") if not _pretty else None) + "\n")
 
 
 def cmd_put(args, conn) -> int:
@@ -38,20 +42,41 @@ def cmd_put(args, conn) -> int:
         session=args.session or "",
         ephemeral=args.ephemeral,
     )
-    _output(fact.to_dict())
+    if not args.quiet:
+        _output(fact.to_dict())
     return 0
 
 
 def cmd_get(args, conn) -> int:
-    fact = get(conn, args.key, namespace=args.namespace)
-    if fact is None:
-        print(json.dumps({"error": "not found", "key": args.key}), file=sys.stderr)
-        return 1
+    keys = args.keys
+    if len(keys) == 1:
+        fact = get(conn, keys[0], namespace=args.namespace)
+        if fact is None:
+            print(json.dumps({"error": "not found", "key": keys[0]}), file=sys.stderr)
+            return 1
+        if args.raw:
+            sys.stdout.write(fact.value + "\n")
+        else:
+            _output(fact.to_dict())
+        return 0
+    # Multi-key: return array, include nulls for missing keys
+    results = []
+    any_found = False
+    for key in keys:
+        fact = get(conn, key, namespace=args.namespace)
+        if fact:
+            any_found = True
+            results.append(fact.to_dict())
+        else:
+            results.append(None)
     if args.raw:
-        sys.stdout.write(fact.value + "\n")
+        for fact, key in zip(results, keys):
+            if fact:
+                sys.stdout.write(json.loads(fact["value"]) if isinstance(fact["value"], str) else json.dumps(fact["value"]))
+            sys.stdout.write("\n")
     else:
-        _output(fact.to_dict())
-    return 0
+        _output(results)
+    return 0 if any_found else 1
 
 
 def cmd_list(args, conn) -> int:
@@ -154,6 +179,7 @@ def main():
     parser = argparse.ArgumentParser(prog="bigmem", description="SQLite-backed memory store for AI agents")
     parser.add_argument("--db", default=_default_db(), help="Path to SQLite database")
     parser.add_argument("--namespace", default="default", help="Namespace for facts")
+    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
 
     sub = parser.add_subparsers(dest="command")
 
@@ -166,10 +192,11 @@ def main():
     p_put.add_argument("--session", default="")
     p_put.add_argument("--ephemeral", action="store_true")
     p_put.add_argument("--stdin", action="store_true", help="Read value from stdin")
+    p_put.add_argument("-q", "--quiet", action="store_true", help="Suppress output on success")
 
     # get
-    p_get = sub.add_parser("get", help="Get a fact by key")
-    p_get.add_argument("key")
+    p_get = sub.add_parser("get", help="Get fact(s) by key")
+    p_get.add_argument("keys", nargs="+", metavar="key")
     p_get.add_argument("--raw", action="store_true", help="Output only the raw JSON value")
 
     # list
@@ -208,6 +235,9 @@ def main():
     if not args.command:
         parser.print_help()
         sys.exit(2)
+
+    global _pretty
+    _pretty = args.pretty
 
     conn = get_connection(args.db)
     init_db(conn)
