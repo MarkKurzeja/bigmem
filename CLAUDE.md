@@ -41,6 +41,7 @@ CLI (cli.py) → Store API (store.py) → DB layer (db.py) → SQLite
 
 - **Namespace isolation** — composite PK `(key, namespace)` allows parallel agents to use the same DB without conflicts
 - **FTS5 triggers** — inserts/updates/deletes on `facts` table automatically propagate to the `facts_fts` full-text index
+- **FTS5 implicit AND** — `search` requires every query word to appear in the document. Use 1-3 keywords, not sentences. For multi-concept lookups, run separate short queries.
 - **Tag storage** — tags stored as comma-separated string in SQLite, parsed to/from Python lists
 - **Pinned facts** — facts tagged `pin` are never removed by `cleanup`
 - **Ephemeral facts** — tied to a `session_id`, cleaned up via `session_end`
@@ -74,4 +75,4 @@ bigmem stats
 ## Claude Code Integration
 
 - `.claude/settings.json` configures a `SessionStart` hook that runs `reinject-memories.sh`
-- Skills in `.claude/skills/` and `skills/` define `bigmem`, `recall`, and `remember` skills for agent memory workflows
+- Single `bigmem` skill in `.claude/skills/` and `skills/` (hardlinked) handles all memory operations: store, retrieve, search, bulk ops
