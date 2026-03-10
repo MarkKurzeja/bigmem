@@ -16,12 +16,17 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     conn.execute("PRAGMA temp_store=MEMORY")
     # Cap WAL file at 64MB to prevent unbounded growth
     conn.execute("PRAGMA journal_size_limit=67108864")
+    # Analyze all tables for query planner on open (not just queried ones)
+    conn.execute("PRAGMA optimize=0x10002")
     return conn
 
 
 def close_connection(conn: sqlite3.Connection) -> None:
     """Close connection with optimize pass for query planner stats."""
-    conn.execute("PRAGMA optimize")
+    try:
+        conn.execute("PRAGMA optimize")
+    except sqlite3.OperationalError:
+        pass  # best-effort; may fail under heavy concurrent load
     conn.close()
 
 

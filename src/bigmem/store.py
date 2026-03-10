@@ -212,23 +212,31 @@ def append(
     value = _normalize_value(value)
     parsed_new = json.loads(value)
 
-    existing = get(conn, key, namespace=namespace)
-    if existing is None:
-        new_list = [parsed_new]
-    else:
-        existing_val = json.loads(existing.value)
-        if isinstance(existing_val, list):
-            new_list = existing_val + [parsed_new]
+    # BEGIN IMMEDIATE acquires a write lock upfront, preventing SQLITE_BUSY
+    # between the read and the subsequent write (race condition).
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        existing = get(conn, key, namespace=namespace)
+        if existing is None:
+            new_list = [parsed_new]
         else:
-            new_list = [existing_val, parsed_new]
+            existing_val = json.loads(existing.value)
+            if isinstance(existing_val, list):
+                new_list = existing_val + [parsed_new]
+            else:
+                new_list = [existing_val, parsed_new]
 
-    return put(
-        conn, key, json.dumps(new_list),
-        namespace=namespace,
-        tags=tags or (existing.tags if existing else ""),
-        source=source or (existing.source if existing else ""),
-        session=session or (existing.session if existing else ""),
-    )
+        result = put(
+            conn, key, json.dumps(new_list),
+            namespace=namespace,
+            tags=tags or (existing.tags if existing else ""),
+            source=source or (existing.source if existing else ""),
+            session=session or (existing.session if existing else ""),
+        )
+        return result
+    except Exception:
+        conn.rollback()
+        raise
 
 
 def cleanup(
