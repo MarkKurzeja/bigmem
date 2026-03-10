@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from bigmem.db import get_connection, init_db
+from bigmem.db import get_connection, init_db, close_connection
 
 
 @pytest.fixture
@@ -14,4 +14,4 @@ def conn(db_path):
     connection = get_connection(db_path)
     init_db(connection)
     yield connection
-    connection.close()
+    close_connection(connection)

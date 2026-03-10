@@ -6,7 +6,7 @@ import os
 import sys
 
 from bigmem import __version__
-from bigmem.db import get_connection, init_db
+from bigmem.db import get_connection, init_db, close_connection
 from bigmem.store import put, get, list_facts, search, delete, session_end, stats, cleanup, append, exists
 
 
@@ -407,5 +407,5 @@ def main():
     }
 
     rc = dispatch[args.command](args, conn)
-    conn.close()
+    close_connection(conn)
     sys.exit(rc)

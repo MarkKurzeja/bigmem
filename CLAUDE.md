@@ -1,13 +1,5 @@
 # bigmem — SQLite-backed memory store for AI agents
 
-## Skills
-
-Use these slash commands instead of calling bigmem directly — they run in forked context to avoid polluting the conversation:
-
-- `/remember <key> <value>` — store a fact silently
-- `/recall <key-or-query>` — retrieve facts or search
-- `/bigmem <command>` — full CLI access (batch, stats, cleanup)
-
 ## Quick CLI Reference
 
 ```bash
@@ -34,11 +26,10 @@ bigmem version
 
 ## Context management patterns
 
-**Pin critical facts** so they survive context compaction:
+**Pin critical facts** so they survive cleanup:
 ```bash
 bigmem put project_arch "monorepo, React frontend, FastAPI backend" --tags pin
 ```
-Pinned facts are automatically re-injected after compaction via SessionStart hook.
 
 **Use `-q` on writes** to avoid adding confirmation noise to context:
 ```bash
@@ -109,7 +100,7 @@ bigmem --db new.db import --file backup.ndjson
 ```
 
 ## Tag conventions
-- `pin` — survives compaction (auto-re-injected) and cleanup
+- `pin` — survives cleanup (never auto-deleted)
 - `decision` — architectural/design decisions
 - `preference` — user preferences
 - `debug` — debugging findings

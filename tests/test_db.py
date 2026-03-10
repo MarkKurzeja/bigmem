@@ -1,6 +1,6 @@
 import sqlite3
 
-from bigmem.db import get_connection, init_db
+from bigmem.db import get_connection, init_db, close_connection
 
 
 def test_get_connection_returns_sqlite_connection(db_path):
@@ -15,6 +15,50 @@ def test_wal_mode_enabled(db_path):
     mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
     assert mode == "wal"
     conn.close()
+
+
+def test_synchronous_normal(db_path):
+    conn = get_connection(db_path)
+    sync = conn.execute("PRAGMA synchronous").fetchone()[0]
+    # 1 = NORMAL
+    assert sync == 1
+    conn.close()
+
+
+def test_busy_timeout_set(db_path):
+    conn = get_connection(db_path)
+    timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+    assert timeout == 5000
+    conn.close()
+
+
+def test_cache_size_set(db_path):
+    conn = get_connection(db_path)
+    cache = conn.execute("PRAGMA cache_size").fetchone()[0]
+    assert cache == -64000
+    conn.close()
+
+
+def test_mmap_size_set(db_path):
+    conn = get_connection(db_path)
+    mmap = conn.execute("PRAGMA mmap_size").fetchone()[0]
+    assert mmap == 268435456
+    conn.close()
+
+
+def test_temp_store_memory(db_path):
+    conn = get_connection(db_path)
+    temp = conn.execute("PRAGMA temp_store").fetchone()[0]
+    # 2 = MEMORY
+    assert temp == 2
+    conn.close()
+
+
+def test_close_connection_runs_optimize(db_path):
+    """close_connection should not raise."""
+    conn = get_connection(db_path)
+    init_db(conn)
+    close_connection(conn)  # should not raise
 
 
 def test_facts_table_exists(conn):
