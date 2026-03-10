@@ -92,6 +92,38 @@ bigmem --namespace agent-1 put findings "..."
 bigmem --namespace agent-2 put findings "..."
 ```
 
+**Use `-q` on writes** to avoid adding confirmation noise to context:
+```bash
+bigmem put status "running task 3" -q
+```
+
+**Use `--raw` for piping** to avoid JSON parsing overhead:
+```bash
+VALUE=$(bigmem get config --raw)
+```
+
+**Multi-key fetch** reduces subprocess calls:
+```bash
+bigmem get user_name user_role user_prefs
+```
+
+**Quick existence check** without parsing a full fact:
+```bash
+bigmem exists config && echo "config is set"
+```
+
+**Time-filtered queries** for resuming work:
+```bash
+bigmem list --since 2025-03-10T00:00:00Z
+bigmem list --before 2025-03-09T00:00:00Z --tags debug
+```
+
+**Ephemeral session memory** for scratch data that auto-cleans:
+```bash
+bigmem put scratch "temp" --ephemeral --session $SESSION_ID
+bigmem session-end $SESSION_ID
+```
+
 **Cleanup old facts (pinned facts preserved):**
 ```bash
 bigmem cleanup --before 2025-01-01T00:00:00Z

@@ -1,6 +1,51 @@
-# bigmem — SQLite-backed memory store for AI agents
+# CLAUDE.md
 
-## Quick CLI Reference
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What is bigmem?
+
+SQLite-backed persistent memory store for AI agents. Zero external dependencies — pure Python 3.10+ stdlib (sqlite3, json, argparse). Provides key-value storage with full-text search (FTS5), tagging, namespace isolation, and session management.
+
+## Development Commands
+
+```bash
+uv sync                              # Install dependencies
+uv run pytest tests/                 # Run all tests
+uv run pytest tests/test_store.py -v # Run a single test module
+uv run pytest tests/ -k "test_put"   # Run tests matching a name
+uv run pytest tests/test_bench.py -v -s   # Benchmarks (with stdout)
+uv run pytest tests/test_stress.py -v     # Concurrent stress tests
+uv run bigmem version               # Run the CLI
+```
+
+No linting/formatting is currently configured.
+
+## Architecture
+
+Four-layer design, each layer only calls the one below it:
+
+```
+CLI (cli.py) → Store API (store.py) → DB layer (db.py) → SQLite
+                                        ↑
+                                   models.py (Fact dataclass)
+```
+
+- **models.py** — `Fact` dataclass with `to_dict()`, `to_json()`, `from_row()` serialization. Composite primary key: `(key, namespace)`.
+- **db.py** — `get_connection()` opens SQLite with hardened WAL-mode pragmas (64MB cache, 256MB mmap, 5s busy timeout). `init_db()` creates `facts` table + FTS5 virtual table with triggers to keep them in sync. Each CLI invocation opens, uses, and closes a connection (stateless).
+- **store.py** — Core API: `put`, `get`, `list_facts`, `search`, `append`, `exists`, `delete`, `session_end`, `cleanup`, `stats`. All values are auto-normalized to JSON. `append` uses `BEGIN IMMEDIATE` transactions for concurrent safety.
+- **cli.py** — argparse-based CLI with 14 subcommands. Compact JSON output by default. Supports batch operations via NDJSON on stdin.
+
+**Entry point:** `bigmem = "bigmem.cli:main"` (defined in pyproject.toml). Also runnable via `python -m bigmem`.
+
+## Key Design Decisions
+
+- **Namespace isolation** — composite PK `(key, namespace)` allows parallel agents to use the same DB without conflicts
+- **FTS5 triggers** — inserts/updates/deletes on `facts` table automatically propagate to the `facts_fts` full-text index
+- **Tag storage** — tags stored as comma-separated string in SQLite, parsed to/from Python lists
+- **Pinned facts** — facts tagged `pin` are never removed by `cleanup`
+- **Ephemeral facts** — tied to a `session_id`, cleaned up via `session_end`
+
+## CLI Quick Reference
 
 ```bash
 bigmem put <key> <value> [--tags t1,t2] [--source agent-id] [-q]
@@ -10,108 +55,23 @@ bigmem append <key> <value> [--tags t1,t2] [-q]
 bigmem search <query> [--tags t]
 bigmem list [--tags t] [--keys-only] [--session s] [--since T] [--before T]
 bigmem delete <key>
-bigmem cleanup [--before T] [--tags t]
+bigmem cleanup [--before T] [--tags t]       # pinned facts always preserved
 bigmem session-end <session-id>
 bigmem export [--file path] [--tags t]
 bigmem import --file path
 echo '{"op":"put","key":"k","value":"v"}' | bigmem batch
 bigmem stats
-bigmem version
 ```
 
-## Global flags
-- `--db PATH` — database file (default: `~/.bigmem.db`). Use separate paths for parallel agents.
-- `--namespace NS` — isolate facts by namespace (default: `default`)
-- `--pretty` — pretty-print JSON (default: compact for token efficiency)
+**Global flags:** `--db PATH` (default `~/.bigmem.db`), `--namespace NS` (default `default`), `--pretty`
 
-## Context management patterns
+**Exit codes:** 0 = success, 1 = not found, 2 = usage error
 
-**Pin critical facts** so they survive cleanup:
-```bash
-bigmem put project_arch "monorepo, React frontend, FastAPI backend" --tags pin
-```
+## Tag Conventions
 
-**Use `-q` on writes** to avoid adding confirmation noise to context:
-```bash
-bigmem put status "running task 3" -q
-```
+`pin` (survives cleanup), `decision`, `preference`, `debug`, `context`, `blocker`
 
-**Use `--raw` for piping** to avoid parsing overhead:
-```bash
-VALUE=$(bigmem get config --raw)
-```
+## Claude Code Integration
 
-**Multi-key fetch** reduces subprocess calls:
-```bash
-bigmem get user_name user_role user_prefs
-```
-
-**Quick existence check** without parsing a full fact:
-```bash
-bigmem exists config && echo "config is set"
-```
-
-**Accumulate findings** without read-modify-write:
-```bash
-bigmem append findings "found XSS in auth.py" -q
-bigmem append findings "SQL injection in search" -q
-bigmem get findings --raw   # → ["found XSS in auth.py", "SQL injection in search"]
-```
-
-**Time-filtered queries** for resuming work:
-```bash
-bigmem list --since 2025-03-10T00:00:00Z
-bigmem list --before 2025-03-09T00:00:00Z --tags debug
-```
-
-**Ephemeral session memory** for scratch data that auto-cleans:
-```bash
-bigmem put scratch "temp" --ephemeral --session $SESSION_ID
-bigmem session-end $SESSION_ID
-```
-
-**Batch operations** for bulk work (NDJSON on stdin, supports all ops):
-```bash
-echo '{"op":"put","key":"a","value":"1"}
-{"op":"append","key":"log","value":"step 1"}
-{"op":"get","key":"a"}
-{"op":"exists","key":"a"}
-{"op":"search","query":"hello"}
-{"op":"delete","key":"a"}' | bigmem batch
-```
-
-**Namespace isolation** for parallel agents or multi-project:
-```bash
-bigmem --namespace agent-1 put findings "..."
-bigmem --namespace agent-2 put findings "..."
-```
-
-**Cleanup old facts** (pinned facts are always preserved):
-```bash
-bigmem cleanup --before 2025-01-01T00:00:00Z
-bigmem cleanup --tags debug
-```
-
-**Export/import** for backups or transferring between databases:
-```bash
-bigmem export --file backup.ndjson
-bigmem export --tags pin --file pinned.ndjson
-bigmem --db new.db import --file backup.ndjson
-```
-
-## Tag conventions
-- `pin` — survives cleanup (never auto-deleted)
-- `decision` — architectural/design decisions
-- `preference` — user preferences
-- `debug` — debugging findings
-- `context` — task/project context
-- `blocker` — known issues
-
-## Exit codes
-- 0 = success, 1 = not found, 2 = usage error
-
-## Development
-```bash
-uv sync
-uv run pytest tests/
-```
+- `.claude/settings.json` configures a `SessionStart` hook that runs `reinject-memories.sh`
+- Skills in `.claude/skills/` and `skills/` define `bigmem`, `recall`, and `remember` skills for agent memory workflows
