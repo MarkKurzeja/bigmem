@@ -18,7 +18,7 @@ uv run pytest tests/test_stress.py -v     # Concurrent stress tests
 uv run bigmem version               # Run the CLI
 ```
 
-No linting/formatting is currently configured.
+Formatting uses `uv format` (ruff) with 2-space indentation. Run `uv format` before committing.
 
 ## Architecture
 

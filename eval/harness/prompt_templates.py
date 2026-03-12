@@ -67,9 +67,7 @@ def build_system_prompt(db_path: str) -> str:
   return BIGMEM_SYSTEM_PROMPT.format(db_path=db_path)
 
 
-def build_multi_agent_prompt(
-  db_path: str, agent_id: str, total_agents: int = 5
-) -> str:
+def build_multi_agent_prompt(db_path: str, agent_id: str, total_agents: int = 5) -> str:
   """Build the multi-agent system prompt."""
   base = BIGMEM_SYSTEM_PROMPT.format(db_path=db_path)
   addendum = MULTI_AGENT_ADDENDUM.format(
@@ -82,6 +80,4 @@ def build_multi_agent_prompt(
 
 def build_user_prompt(question: str) -> str:
   """Build the user prompt for a single question."""
-  return (
-    f"Using the BigMem memory store, answer the following question:\n\n{question}"
-  )
+  return f"Using the BigMem memory store, answer the following question:\n\n{question}"

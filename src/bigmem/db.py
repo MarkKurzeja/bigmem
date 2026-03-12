@@ -2,36 +2,36 @@ import sqlite3
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path, timeout=5.0)
-    # WAL mode: concurrent readers, non-blocking writes
-    conn.execute("PRAGMA journal_mode=WAL")
-    # NORMAL sync is safe with WAL and avoids fsync on every commit
-    conn.execute("PRAGMA synchronous=NORMAL")
-    # Wait up to 5s for locks instead of failing immediately
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA foreign_keys=ON")
-    # Performance: 64MB page cache, 256MB mmap, temp tables in memory
-    conn.execute("PRAGMA cache_size=-64000")
-    conn.execute("PRAGMA mmap_size=268435456")
-    conn.execute("PRAGMA temp_store=MEMORY")
-    # Cap WAL file at 64MB to prevent unbounded growth
-    conn.execute("PRAGMA journal_size_limit=67108864")
-    # Analyze all tables for query planner on open (not just queried ones)
-    conn.execute("PRAGMA optimize=0x10002")
-    return conn
+  conn = sqlite3.connect(db_path, timeout=5.0)
+  # WAL mode: concurrent readers, non-blocking writes
+  conn.execute("PRAGMA journal_mode=WAL")
+  # NORMAL sync is safe with WAL and avoids fsync on every commit
+  conn.execute("PRAGMA synchronous=NORMAL")
+  # Wait up to 5s for locks instead of failing immediately
+  conn.execute("PRAGMA busy_timeout=5000")
+  conn.execute("PRAGMA foreign_keys=ON")
+  # Performance: 64MB page cache, 256MB mmap, temp tables in memory
+  conn.execute("PRAGMA cache_size=-64000")
+  conn.execute("PRAGMA mmap_size=268435456")
+  conn.execute("PRAGMA temp_store=MEMORY")
+  # Cap WAL file at 64MB to prevent unbounded growth
+  conn.execute("PRAGMA journal_size_limit=67108864")
+  # Analyze all tables for query planner on open (not just queried ones)
+  conn.execute("PRAGMA optimize=0x10002")
+  return conn
 
 
 def close_connection(conn: sqlite3.Connection) -> None:
-    """Close connection with optimize pass for query planner stats."""
-    try:
-        conn.execute("PRAGMA optimize")
-    except sqlite3.OperationalError:
-        pass  # best-effort; may fail under heavy concurrent load
-    conn.close()
+  """Close connection with optimize pass for query planner stats."""
+  try:
+    conn.execute("PRAGMA optimize")
+  except sqlite3.OperationalError:
+    pass  # best-effort; may fail under heavy concurrent load
+  conn.close()
 
 
 def init_db(conn: sqlite3.Connection) -> None:
-    conn.executescript("""
+  conn.executescript("""
         CREATE TABLE IF NOT EXISTS facts (
             key TEXT NOT NULL,
             namespace TEXT NOT NULL DEFAULT 'default',

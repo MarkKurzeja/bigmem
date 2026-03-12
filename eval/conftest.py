@@ -15,7 +15,12 @@ REPORTS_DIR = os.path.join(EVAL_DIR, "reports")
 
 
 def pytest_addoption(parser):
-  parser.addoption("--run-expensive", action="store_true", default=False, help="Run expensive multi-agent tests")
+  parser.addoption(
+    "--run-expensive",
+    action="store_true",
+    default=False,
+    help="Run expensive multi-agent tests",
+  )
   parser.addoption("--eval-model", default="sonnet", help="Model to use for eval (default: sonnet)")
   parser.addoption("--max-budget", type=float, default=0.50, help="Max budget per question in USD")
 
@@ -42,7 +47,9 @@ def baseline_db(tmp_path):
   """Copy baseline golden DB to a temp directory for isolated testing."""
   src = os.path.join(GOLDEN_DIR, "baseline.db")
   if not os.path.exists(src):
-    pytest.skip("Golden baseline.db not found. Run: uv run python eval/seed/build_golden_db.py --tier baseline --output eval/golden/baseline.db")
+    pytest.skip(
+      "Golden baseline.db not found. Run: uv run python eval/seed/build_golden_db.py --tier baseline --output eval/golden/baseline.db"
+    )
   dst = str(tmp_path / "test.db")
   shutil.copy2(src, dst)
   for suffix in ["-wal", "-shm"]:
@@ -57,7 +64,9 @@ def scale_db(tmp_path):
   """Copy scale golden DB to a temp directory for isolated testing."""
   src = os.path.join(GOLDEN_DIR, "scale.db")
   if not os.path.exists(src):
-    pytest.skip("Golden scale.db not found. Run: uv run python eval/seed/build_golden_db.py --tier scale --output eval/golden/scale.db")
+    pytest.skip(
+      "Golden scale.db not found. Run: uv run python eval/seed/build_golden_db.py --tier scale --output eval/golden/scale.db"
+    )
   dst = str(tmp_path / "test.db")
   shutil.copy2(src, dst)
   for suffix in ["-wal", "-shm"]:

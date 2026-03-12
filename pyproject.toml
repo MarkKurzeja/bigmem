@@ -16,4 +16,14 @@ build-backend = "hatchling.build"
 packages = ["src/bigmem"]
 
 [dependency-groups]
-dev = ["pytest"]
+dev = ["pytest", "ruff"]
+
+[tool.ruff]
+line-length = 100
+indent-width = 2
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"

@@ -68,7 +68,17 @@ def extract_cited_keys(sources_text: str) -> list[str]:
 def key_exists_in_db(key: str, db_path: str, namespace: str = "medical-facts") -> bool:
   """Check if a key exists in the BigMem database."""
   result = subprocess.run(
-    [sys.executable, "-m", "bigmem", "--db", db_path, "--namespace", namespace, "exists", key],
+    [
+      sys.executable,
+      "-m",
+      "bigmem",
+      "--db",
+      db_path,
+      "--namespace",
+      namespace,
+      "exists",
+      key,
+    ],
     capture_output=True,
     text=True,
     cwd=str(__import__("pathlib").Path(__file__).resolve().parent.parent.parent),
@@ -85,7 +95,15 @@ def score_accuracy(response_text: str, expected_answer: str, key_terms: list[str
   """
   if not key_terms:
     # For negative questions, check if Claude correctly said "not found"
-    not_found_phrases = ["not found", "no results", "no information", "does not contain", "couldn't find", "could not find", "no relevant"]
+    not_found_phrases = [
+      "not found",
+      "no results",
+      "no information",
+      "does not contain",
+      "couldn't find",
+      "could not find",
+      "no relevant",
+    ]
     response_lower = response_text.lower()
     for phrase in not_found_phrases:
       if phrase in response_lower:
@@ -123,7 +141,12 @@ def score_hallucination(
   Returns 1.0 if no hallucination, 0.0 if hallucinated.
   """
   if category == "negative":
-    not_found_phrases = ["not found", "no results", "no information", "does not contain"]
+    not_found_phrases = [
+      "not found",
+      "no results",
+      "no information",
+      "does not contain",
+    ]
     response_lower = response_text.lower()
     for phrase in not_found_phrases:
       if phrase in response_lower:

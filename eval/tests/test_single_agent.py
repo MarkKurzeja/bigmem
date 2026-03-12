@@ -21,9 +21,7 @@ from eval.scoring.scorer import QuestionScore, score_response
 class TestSingleAgent:
   """Run all ground truth questions against Claude with BigMem."""
 
-  def test_eval_all_questions(
-    self, baseline_db, ground_truth, eval_model, max_budget, reports_dir
-  ):
+  def test_eval_all_questions(self, baseline_db, ground_truth, eval_model, max_budget, reports_dir):
     """Run the full eval suite and generate a report."""
     questions = ground_truth["questions"]
     system_prompt = build_system_prompt(baseline_db)
@@ -51,9 +49,11 @@ class TestSingleAgent:
         scores.append(s)
         continue
 
-      print(f"  Tokens: {result.input_tokens} in + {result.output_tokens} out"
-            f" (cache: {result.cache_creation_tokens} create, {result.cache_read_tokens} read)"
-            f" = {result.total_tokens} total")
+      print(
+        f"  Tokens: {result.input_tokens} in + {result.output_tokens} out"
+        f" (cache: {result.cache_creation_tokens} create, {result.cache_read_tokens} read)"
+        f" = {result.total_tokens} total"
+      )
       print(f"  Cost: ${result.cost_usd:.4f}")
       print(f"  BigMem commands: {len(result.bigmem_commands)}")
       print(f"  Wall time: {result.wall_time_seconds:.1f}s")

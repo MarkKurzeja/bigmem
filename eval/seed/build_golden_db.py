@@ -95,7 +95,9 @@ def extract_cards(tier: str) -> list[dict]:
 
     cards = parse_toml_deck(path)
     # Prefer high_yield cards, then take any basic cards
-    high_yield = [c for c in cards if "high_yield" in c.get("tags", []) and c.get("model") == "basic"]
+    high_yield = [
+      c for c in cards if "high_yield" in c.get("tags", []) and c.get("model") == "basic"
+    ]
     basic = [c for c in cards if c.get("model") == "basic"]
 
     pool = high_yield if len(high_yield) >= per_deck else basic
@@ -108,20 +110,24 @@ def extract_cards(tier: str) -> list[dict]:
       tags = card.get("tags", [])
 
       key = f"{deck_slug}-{slugify(front[:80])}"
-      value = json.dumps({
-        "question": front,
-        "answer": strip_html(back),
-        "source_tags": tags,
-      })
+      value = json.dumps(
+        {
+          "question": front,
+          "answer": strip_html(back),
+          "source_tags": tags,
+        }
+      )
       tag_str = ",".join(tags) if tags else ""
 
-      ops.append({
-        "op": "put",
-        "key": key,
-        "value": value,
-        "tags": tag_str,
-        "namespace": "medical-facts",
-      })
+      ops.append(
+        {
+          "op": "put",
+          "key": key,
+          "value": value,
+          "tags": tag_str,
+          "namespace": "medical-facts",
+        }
+      )
 
   return ops[:target_count]
 
@@ -164,19 +170,23 @@ def extract_summaries(tier: str) -> list[dict]:
           continue
 
         key = f"summary-ch{ch_num}-{slugify(sub_header)}"
-        value = json.dumps({
-          "chapter": int(ch_num),
-          "section": sub_header,
-          "content": sub_body[:2000],
-        })
+        value = json.dumps(
+          {
+            "chapter": int(ch_num),
+            "section": sub_header,
+            "content": sub_body[:2000],
+          }
+        )
 
-        ops.append({
-          "op": "put",
-          "key": key,
-          "value": value,
-          "tags": f"summary,ch{ch_num}",
-          "namespace": "medical-facts",
-        })
+        ops.append(
+          {
+            "op": "put",
+            "key": key,
+            "value": value,
+            "tags": f"summary,ch{ch_num}",
+            "namespace": "medical-facts",
+          }
+        )
 
       if len(ops) >= target_count:
         break

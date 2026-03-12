@@ -109,8 +109,7 @@ class TestStoreRecall:
 
     # Phase 1: Store facts
     store_instructions = "\n".join(
-      f"- Key: `{f['key']}`, Value: `{f['value']}`, Tags: `{f['tags']}`"
-      for f in FACTS_TO_STORE
+      f"- Key: `{f['key']}`, Value: `{f['value']}`, Tags: `{f['tags']}`" for f in FACTS_TO_STORE
     )
     store_result = run_claude(
       _store_prompt(db_path),
@@ -126,8 +125,18 @@ class TestStoreRecall:
     # Verify facts were actually stored
     for fact in FACTS_TO_STORE:
       result = subprocess.run(
-        [sys.executable, "-m", "bigmem", "--db", db_path, "exists", fact["key"]],
-        capture_output=True, text=True, cwd=BIGMEM_ROOT,
+        [
+          sys.executable,
+          "-m",
+          "bigmem",
+          "--db",
+          db_path,
+          "exists",
+          fact["key"],
+        ],
+        capture_output=True,
+        text=True,
+        cwd=BIGMEM_ROOT,
       )
       assert result.returncode == 0, f"Fact '{fact['key']}' was not stored"
     print(f"  All {len(FACTS_TO_STORE)} facts verified in DB")
@@ -162,13 +171,15 @@ class TestStoreRecall:
       if missing_terms:
         print(f"  Missing: {missing_terms}")
 
-      recall_results.append({
-        "id": q["id"],
-        "accuracy": accuracy,
-        "key_cited": key_cited,
-        "cost": result.cost_usd,
-        "wall_time": result.wall_time_seconds,
-      })
+      recall_results.append(
+        {
+          "id": q["id"],
+          "accuracy": accuracy,
+          "key_cited": key_cited,
+          "cost": result.cost_usd,
+          "wall_time": result.wall_time_seconds,
+        }
+      )
 
     # Assertions
     avg_accuracy = sum(r["accuracy"] for r in recall_results) / len(recall_results)

@@ -51,8 +51,10 @@ def parse_stream_json(raw_output: str) -> ClaudeResult:
 
   # Total tokens = direct input + cached + output
   result.total_tokens = (
-    result.input_tokens + result.cache_creation_tokens
-    + result.cache_read_tokens + result.output_tokens
+    result.input_tokens
+    + result.cache_creation_tokens
+    + result.cache_read_tokens
+    + result.output_tokens
   )
   return result
 
@@ -94,7 +96,8 @@ def _process_event(event: dict, result: ClaudeResult) -> None:
       result.input_tokens = max(result.input_tokens, model_info.get("inputTokens", 0))
       result.output_tokens = max(result.output_tokens, model_info.get("outputTokens", 0))
       result.cache_creation_tokens = max(
-        result.cache_creation_tokens, model_info.get("cacheCreationInputTokens", 0)
+        result.cache_creation_tokens,
+        model_info.get("cacheCreationInputTokens", 0),
       )
       result.cache_read_tokens = max(
         result.cache_read_tokens, model_info.get("cacheReadInputTokens", 0)
@@ -125,12 +128,16 @@ def run_claude(
     "claude",
     "--print",
     "--verbose",
-    "--output-format", "stream-json",
-    "--model", model,
-    "--max-budget-usd", str(max_budget_usd),
+    "--output-format",
+    "stream-json",
+    "--model",
+    model,
+    "--max-budget-usd",
+    str(max_budget_usd),
     "--no-session-persistence",
     "--dangerously-skip-permissions",
-    "--system-prompt", system_prompt,
+    "--system-prompt",
+    system_prompt,
     user_prompt,
   ]
 
