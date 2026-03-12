@@ -41,7 +41,7 @@ CLI (cli.py) → Store API (store.py) → DB layer (db.py) → SQLite
 
 - **Namespace isolation** — composite PK `(key, namespace)` allows parallel agents to use the same DB without conflicts
 - **FTS5 triggers** — inserts/updates/deletes on `facts` table automatically propagate to the `facts_fts` full-text index
-- **FTS5 implicit AND** — `search` requires every query word to appear in the document. Use 1-3 keywords, not sentences. For multi-concept lookups, run separate short queries.
+- **FTS5 smart search** — short queries (≤3 words) use implicit AND; long queries (4+ words) auto-convert to OR after stripping stopwords for better recall. Use `--exact` to force AND. Raw FTS5 operators (`AND`, `OR`, `NOT`, `NEAR`, `"..."`) pass through unchanged.
 - **Tag storage** — tags stored as comma-separated string in SQLite, parsed to/from Python lists
 - **Pinned facts** — facts tagged `pin` are never removed by `cleanup`
 - **Ephemeral facts** — tied to a `session_id`, cleaned up via `session_end`

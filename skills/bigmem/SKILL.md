@@ -46,13 +46,12 @@ echo "---"
 bigmem list --limit 10 --keys-only
 ```
 
-## Search: FTS5 rules
+## Search behavior
 
-**FTS5 uses implicit AND** — every word in the query must appear in the document.
-
-- Use **1-3 specific keywords**, NOT natural-language sentences
-- `search "preterm birth"` works; `search "risk factors for spontaneous preterm birth"` returns nothing
-- For multi-concept lookups, run **separate short queries** for each concept
+- **Short queries (1-3 words):** implicit AND — all words must appear. Precise.
+- **Long queries (4+ words):** auto-converts to OR after stripping stopwords. Broad recall.
+- **`--exact` flag:** forces AND matching even for long queries.
+- **FTS5 operators** (`AND`, `OR`, `NOT`, `NEAR`, `"..."`, `*`): pass through unchanged for full control.
 - Try at most **2 searches** per concept. If both return empty, the fact doesn't exist — stop.
 
 ## Token efficiency
@@ -72,7 +71,7 @@ bigmem list --limit 10 --keys-only
 | `get <key> [key2...]` | Retrieve one or more facts |
 | `exists <key>` | Check existence (exit 0=yes, 1=no) |
 | `append <key> <value>` | Append to JSON array (atomic, creates if missing) |
-| `search <query>` | Full-text search (FTS5, implicit AND) |
+| `search <query>` | Full-text search (FTS5; smart OR for 4+ words) |
 | `list` | List facts with filters |
 | `delete <key>` | Remove a fact |
 | `cleanup` | Delete old/tagged facts (preserves `pin` tag) |

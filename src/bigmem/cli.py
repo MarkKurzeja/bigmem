@@ -109,6 +109,7 @@ def cmd_search(args, conn) -> int:
         tags=args.tags or "",
         limit=args.limit,
         offset=args.offset,
+        exact=args.exact,
     )
     _output([f.to_dict() for f in results])
     return 0
@@ -331,6 +332,7 @@ def main():
     p_search.add_argument("--tags", default="")
     p_search.add_argument("--limit", type=int, default=100)
     p_search.add_argument("--offset", type=int, default=0)
+    p_search.add_argument("--exact", action="store_true", help="Disable smart OR-join; use raw FTS5 AND matching")
 
     # delete
     p_delete = sub.add_parser("delete", help="Delete a fact")

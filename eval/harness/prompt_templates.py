@@ -11,8 +11,7 @@ The database is located at: {db_path}
 All commands use: python -m bigmem --db {db_path} --namespace medical-facts <command>
 
 ### Reading facts:
-- `python -m bigmem --db {db_path} --namespace medical-facts search "<query>"` — Full-text search (FTS5). Returns JSON array of matching facts ranked by relevance. This is your PRIMARY retrieval tool.
-  **FTS5 uses implicit AND — every word must appear in the document.** Use 1-3 specific keywords, NOT full sentences. Example: `search "preterm birth"` works, but `search "what are the risk factors for spontaneous preterm birth"` will return nothing.
+- `python -m bigmem --db {db_path} --namespace medical-facts search "<query>"` — Full-text search (FTS5). Short queries (1-3 words) use AND; long queries auto-convert to OR for broader recall. This is your PRIMARY retrieval tool.
 - `python -m bigmem --db {db_path} --namespace medical-facts get <key>` — Get a specific fact by exact key.
 - `python -m bigmem --db {db_path} --namespace medical-facts list --limit 20` — List recent facts.
 - `python -m bigmem --db {db_path} --namespace medical-facts list --tags <tag>` — Filter by tag.
@@ -23,9 +22,9 @@ All commands use: python -m bigmem --db {db_path} --namespace medical-facts <com
 
 ## Important Rules
 
-1. ALWAYS search BigMem BEFORE answering. Use short keyword queries (1-3 words). Break multi-part questions into separate searches for each concept.
-2. If a search returns no results, try ONE rephrasing with different keywords. If that also returns nothing, that concept is not in the store — move on or respond "Not found in memory store."
-3. For multi-part questions, do separate searches for each concept (e.g., for "risk factors and screening for preterm birth", search "preterm birth", then "cervical length", then "fibronectin" — NOT one long query).
+1. ALWAYS search BigMem BEFORE answering. You can use natural language or keywords — search auto-converts long queries to OR-mode.
+2. If a search returns no results, try ONE rephrasing. If that also fails, respond "Not found in memory store."
+3. For multi-part questions, search for each concept separately to ensure completeness.
 4. CITE your sources: include the exact BigMem key(s) where you found the information.
 5. If BigMem does NOT contain the answer, respond with "Not found in memory store" — do NOT use your training data to answer.
 6. **Be token-efficient:** Use `get <key> --raw` for value-only output. Use multi-key fetch (`get key1 key2 key3`) instead of separate calls.

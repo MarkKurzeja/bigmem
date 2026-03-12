@@ -1,10 +1,67 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from typing import Optional
 
 from bigmem.models import Fact
+
+# Common English stopwords to strip from long queries
+_STOPWORDS = frozenset({
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "need", "dare", "ought",
+    "and", "but", "or", "nor", "not", "so", "yet", "both", "either",
+    "neither", "each", "every", "all", "any", "few", "more", "most",
+    "other", "some", "such", "no", "only", "same", "than", "too", "very",
+    "of", "in", "to", "for", "with", "on", "at", "from", "by", "about",
+    "as", "into", "through", "during", "before", "after", "above", "below",
+    "between", "out", "off", "over", "under", "again", "further", "then",
+    "once", "here", "there", "when", "where", "why", "how", "what",
+    "which", "who", "whom", "this", "that", "these", "those", "it", "its",
+})
+
+# FTS5 operator tokens — if present, the user is writing a raw FTS5 query
+_FTS5_OPERATORS = re.compile(r'\b(AND|OR|NOT|NEAR)\b|[*"()]')
+
+
+def _prepare_query(query: str) -> str:
+    """Convert a natural-language query to an effective FTS5 query.
+
+    Short queries (≤3 words) pass through with cleanup.
+    Queries with FTS5 operators pass through as-is.
+    Long queries (4+ words) get stopwords stripped and OR-joined so
+    partial matches are returned instead of nothing.
+    """
+    query = query.strip()
+    if not query:
+        return query
+
+    # Pass through raw FTS5 queries (contain explicit operators)
+    if _FTS5_OPERATORS.search(query):
+        return query
+
+    # Clean punctuation that confuses FTS5
+    # - hyphens become spaces (FTS5 treats - as column negation)
+    # - strip trailing punctuation from words
+    cleaned = re.sub(r'-', ' ', query)
+    words = [re.sub(r'[^\w]', '', w) for w in cleaned.split()]
+    words = [w for w in words if w]  # drop empty
+
+    if not words:
+        return query
+
+    if len(words) <= 3:
+        return " ".join(words)
+
+    # Strip stopwords, keep content words
+    content_words = [w for w in words if w.lower() not in _STOPWORDS]
+    if not content_words:
+        content_words = words  # all stopwords? keep original
+
+    # OR-join for recall-oriented search
+    return " OR ".join(content_words)
 
 COLUMNS = [
     "key", "namespace", "value", "tags", "source",
@@ -115,10 +172,12 @@ def search(
     tags: str = "",
     limit: int = 100,
     offset: int = 0,
+    exact: bool = False,
 ) -> list[Fact]:
+    fts_query = query if exact else _prepare_query(query)
     cols = ', '.join('f.' + c for c in COLUMNS)
     clauses = ["facts_fts MATCH ?", "f.namespace = ?"]
-    params: list = [query, namespace]
+    params: list = [fts_query, namespace]
     if tags:
         clauses.append("f.tags LIKE ?")
         params.append(f"%{tags}%")

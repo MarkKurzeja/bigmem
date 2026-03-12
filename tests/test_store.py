@@ -239,6 +239,50 @@ def test_search_no_results(conn):
     assert len(results) == 0
 
 
+def test_search_smart_or_for_long_queries(conn):
+    """Long queries (4+ words) auto-convert to OR-joined for better recall."""
+    put(conn, "preterm-risk", json.dumps("prior preterm birth is the strongest risk factor"))
+    put(conn, "cervical-length", json.dumps("short cervical length predicts preterm delivery"))
+    put(conn, "unrelated", json.dumps("the weather is nice today"))
+    # 4+ words → OR-joined: "preterm" OR "birth" OR "risk" OR "factor" OR "cervical"
+    results = search(conn, "preterm birth risk factor cervical length screening")
+    assert len(results) >= 2  # should find both preterm facts
+    keys = {r.key for r in results}
+    assert "preterm-risk" in keys
+    assert "cervical-length" in keys
+
+
+def test_search_short_query_stays_and(conn):
+    """Short queries (≤3 words) keep implicit AND behavior."""
+    put(conn, "k1", json.dumps("alpha beta"))
+    put(conn, "k2", json.dumps("alpha gamma"))
+    # "alpha beta" = 2 words, stays AND
+    results = search(conn, "alpha beta")
+    assert len(results) == 1
+    assert results[0].key == "k1"
+
+
+def test_search_exact_flag(conn):
+    """exact=True bypasses smart OR-join."""
+    put(conn, "k1", json.dumps("hello world foo bar baz"))
+    # 5 words, but exact=True → AND (all words must match)
+    results = search(conn, "hello world foo bar baz", exact=True)
+    assert len(results) == 1
+    # Query with word not in doc → 0 results with exact
+    results = search(conn, "hello world foo bar nonexistent", exact=True)
+    assert len(results) == 0
+
+
+def test_search_fts5_operators_passthrough(conn):
+    """Queries with explicit FTS5 operators pass through unchanged."""
+    put(conn, "k1", json.dumps("apple banana"))
+    put(conn, "k2", json.dumps("apple cherry"))
+    # Explicit OR — should pass through even though it's 4+ words
+    results = search(conn, "apple AND banana AND cherry AND orange")
+    # Only k1 has banana, only k2 has cherry; AND means no single doc matches all
+    assert len(results) == 0
+
+
 # --- delete ---
 
 def test_delete(conn):
